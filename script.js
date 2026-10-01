@@ -107,38 +107,250 @@ import {getFirestore, collection, addDoc, getDocs, deleteDoc, doc} from "https:/
                 setInterval(updateClock, 1000);
                 updateClock();
             });
-/* MASTER DATA PO DARI FIREBASE */
+/* =========================================
+   MASTER DATA PO DARI FIREBASE
+========================================= */
 
 let dataByKode = {};
+let daftarPO = [];
+let currentPOIndex = -1;
 
+// Ambil data PO dari Firestore
 async function loadPODataFromFirebase() {
-  try {
-    const snapshot = await getDocs(collection(db, "purchaseOrders"));
+    const selector = document.getElementById("kodeSelector1");
+    const tableBody = document.getElementById("poTableBody");
 
-    dataByKode = {};
+    try {
+        if (selector) {
+            selector.innerHTML = '<option value="">Memuat data PO...</option>';
+            selector.disabled = true;
+        }
 
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
+        const snapshot = await getDocs(collection(db, "purchaseOrders"));
 
-      // Nomor PO dari field "po", atau ID dokumen sebagai cadangan
-      const kodePO = data.po || docSnap.id;
+        dataByKode = {};
 
-      dataByKode[kodePO] = {
-        po: kodePO,
-        Vendor: data.Vendor || "",
-        ecrd: data.ecrd || "",
-        items: Array.isArray(data.items)
-          ? data.items.map((item) => ({
-              item: item.item || "",
-              qty: item.qty || 0,
-              desc: item.desc || "",
-              image: item.image || ""
-            }))
-          : []
-      };
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const kodePO = String(data.po || docSnap.id).trim();
+
+            if (!kodePO) return;
+
+            dataByKode[kodePO] = {
+                po: kodePO,
+                Vendor: data.Vendor || data.vendor || "",
+                ecrd: data.ecrd || data.ECRD || "",
+                items: Array.isArray(data.items)
+                    ? data.items.map((item) => ({
+                        item: item.item || "",
+                        qty: item.qty ?? 0,
+                        desc: item.desc || item.description || "",
+                        image: item.image || ""
+                    }))
+                    : []
+            };
+        });
+
+        daftarPO = Object.keys(dataByKode).sort((a, b) =>
+            a.localeCompare(b, undefined, {
+                numeric: true,
+                sensitivity: "base"
+            })
+        );
+
+        isiDropdownPO();
+
+        console.log("Jumlah PO:", daftarPO.length);
+        console.log("Data PO Firebase:", dataByKode);
+
+        const status = document.getElementById("poStatus");
+        if (status) {
+            status.textContent = `${daftarPO.length} data PO berhasil dimuat`;
+        }
+
+        if (daftarPO.length === 0 && tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7">Tidak ada data PO di Firebase.</td>
+                </tr>
+            `;
+        }
+
+    } catch (error) {
+        console.error("Gagal memuat data PO:", error);
+
+        if (selector) {
+            selector.innerHTML =
+                '<option value="">Gagal memuat PO</option>';
+        }
+
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7">Gagal mengambil data PO dari Firebase.</td>
+                </tr>
+            `;
+        }
+
+        alert("Data PO gagal dimuat. Periksa koneksi Firebase dan izin Firestore.");
+    } finally {
+        if (selector) selector.disabled = false;
+    }
+}
+
+// Isi dropdown PO
+function isiDropdownPO(list = daftarPO) {
+    const selector = document.getElementById("kodeSelector1");
+    if (!selector) return;
+
+    selector.innerHTML = '<option value="">-- Select PO --</option>';
+
+    list.forEach((kode) => {
+        const option = document.createElement("option");
+        option.value = kode;
+        option.textContent = kode;
+        selector.appendChild(option);
+    });
+}
+
+// Tampilkan data PO yang dipilih
+function tampilkanData(kode = null) {
+    const selector = document.getElementById("kodeSelector1");
+    const tableBody = document.getElementById("poTableBody");
+
+    if (!tableBody) return;
+
+    const selectedKode = kode || (selector ? selector.value : "");
+    tableBody.innerHTML = "";
+
+    if (!selectedKode || !dataByKode[selectedKode]) {
+        currentPOIndex = -1;
+        return;
+    }
+
+    const poData = dataByKode[selectedKode];
+    currentPOIndex = daftarPO.indexOf(selectedKode);
+
+    if (selector) selector.value = selectedKode;
+
+    const items = poData.items || [];
+
+    if (items.length === 0) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.textContent = "PO ditemukan, tetapi belum memiliki item.";
+        row.appendChild(cell);
+        tableBody.appendChild(row);
+        return;
+    }
+
+    items.forEach((item) => {
+        const row = document.createElement("tr");
+
+        const values = [
+            poData.Vendor,
+            poData.po,
+            item.item,
+            item.qty,
+            item.desc,
+            poData.ecrd
+        ];
+
+        values.forEach((value) => {
+            const cell = document.createElement("td");
+            cell.textContent = value ?? "";
+            row.appendChild(cell);
+        });
+
+        const imageCell = document.createElement("td");
+
+        if (item.image) {
+            const img = document.createElement("img");
+            img.src = item.image;
+            img.alt = item.item || "PO item";
+            img.style.maxWidth = "100px";
+            img.style.maxHeight = "100px";
+            img.style.objectFit = "contain";
+            img.onerror = () => {
+                imageCell.textContent = "Gambar tidak tersedia";
+            };
+            imageCell.appendChild(img);
+        } else {
+            imageCell.textContent = "-";
+        }
+
+        row.appendChild(imageCell);
+        tableBody.appendChild(row);
+    });
+}
+
+// Cari PO berdasarkan input manual
+function cariManual() {
+    const input = document.getElementById("searchInput");
+    const selector = document.getElementById("kodeSelector1");
+
+    if (!input || !selector) return;
+
+    const keyword = input.value.trim().toLowerCase();
+
+    const hasil = daftarPO.filter((kode) => {
+        const po = dataByKode[kode];
+        const vendor = String(po.Vendor || "").toLowerCase();
+
+        return kode.toLowerCase().includes(keyword) ||
+            vendor.includes(keyword);
     });
 
-    console.log("Data PO berhasil dimuat:", dataByKode);
+    isiDropdownPO(hasil);
+
+    if (hasil.length === 1) {
+        selector.value = hasil[0];
+        tampilkanData(hasil[0]);
+    } else {
+        selector.value = "";
+        document.getElementById("poTableBody").innerHTML = "";
+    }
+}
+
+// Navigasi ke PO sebelumnya
+function previousPO() {
+    if (daftarPO.length === 0) return;
+
+    if (currentPOIndex <= 0) {
+        currentPOIndex = daftarPO.length - 1;
+    } else {
+        currentPOIndex--;
+    }
+
+    tampilkanData(daftarPO[currentPOIndex]);
+}
+
+// Navigasi ke PO berikutnya
+function nextPO() {
+    if (daftarPO.length === 0) return;
+
+    if (currentPOIndex >= daftarPO.length - 1) {
+        currentPOIndex = 0;
+    } else {
+        currentPOIndex++;
+    }
+
+    tampilkanData(daftarPO[currentPOIndex]);
+}
+
+// Pasang fungsi agar bisa dipanggil oleh atribut HTML onclick/onchange
+window.tampilkanData = tampilkanData;
+window.cariManual = cariManual;
+window.previousPO = previousPO;
+window.nextPO = nextPO;
+
+// Muat PO setelah halaman siap
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", loadPODataFromFirebase);
+} else {
+    loadPODataFromFirebase();
+}
 
     // Perbarui pilihan PO pada dashboard jika fungsi ini tersedia
     if (typeof refreshPOSelectors === "function") {
