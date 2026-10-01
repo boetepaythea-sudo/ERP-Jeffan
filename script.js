@@ -352,29 +352,6 @@ if (document.readyState === "loading") {
     loadPODataFromFirebase();
 }
 
-    // Perbarui pilihan PO pada dashboard jika fungsi ini tersedia
-    if (typeof refreshPOSelectors === "function") {
-      refreshPOSelectors();
-    }
-
-    const status = document.getElementById("poStatus");
-    if (status) {
-      status.textContent = `${Object.keys(dataByKode).length} data PO berhasil dimuat`;
-    }
-
-  } catch (error) {
-    console.error("Gagal memuat data PO:", error);
-
-    const status = document.getElementById("poStatus");
-    if (status) {
-      status.textContent = "Gagal memuat data PO dari Firebase";
-    }
-  }
-}
-
-// Muat data PO saat halaman siap
-document.addEventListener("DOMContentLoaded", loadPODataFromFirebase);
-
 const guideTexts = {
                 guideInput: `
     <h3>📌 Panduan: Input Data Inspection</h3>
